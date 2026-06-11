@@ -3,11 +3,16 @@
   "description": "Set the response content-type based on the payload bytes",
   "homepage": "https://github.com/kikobeats/set-content-type",
   "version": "0.0.0",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
   "author": {
     "email": "josefrancisco.verdu@gmail.com",
     "name": "Jose Francisco 'Kiko' Verdú Gambín",
     "url": "https://kikobeats.com"
   },
+  "contributors": [],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kikobeats/set-content-type.git"
@@ -47,6 +52,9 @@
   "engines": {
     "node": ">= 24"
   },
+  "files": [
+    "src"
+  ],
   "scripts": {
     "clean": "rm -rf node_modules",
     "contributors": "(git-authors-cli && finepack && git add package.json && git commit -m 'build: contributors' --no-verify) || true",
@@ -55,13 +63,13 @@
     "postrelease": "pnpm release:tags && pnpm release:github && (ci-publish || pnpm publish --access=public)",
     "pretest": "pnpm lint",
     "release": "pnpm release:version && pnpm release:changelog && pnpm release:commit && pnpm release:tag",
-    "release:github": "github-generate-release",
-    "release:tags": "git push origin HEAD:master --follow-tags",
-    "test": "c8 ava",
     "release:changelog": "conventional-changelog -p conventionalcommits -i CHANGELOG.md -s",
     "release:commit": "git add package.json CHANGELOG.md && git commit -m \"chore(release): $(node -p \"require('./package.json').version\")\"",
+    "release:github": "github-generate-release",
     "release:tag": "git tag -a v$(node -p \"require('./package.json').version\") -m \"v$(node -p \"require('./package.json').version\")\"",
-    "release:version": "standard-version --skip.changelog --skip.commit --skip.tag"
+    "release:tags": "git push origin HEAD:master --follow-tags",
+    "release:version": "standard-version --skip.changelog --skip.commit --skip.tag",
+    "test": "c8 ava"
   },
   "license": "MIT",
   "commitlint": {
@@ -74,16 +82,6 @@
       ]
     }
   },
-  "exports": {
-    ".": "./src/index.js"
-  },
-  "main": "./src/index.js",
-  "files": [
-    "src"
-  ],
-  "publishConfig": {
-    "access": "public"
-  },
   "nano-staged": {
     "*.js": [
       "npx @kikobeats/prettier-standard",
@@ -92,6 +90,9 @@
     "package.json": [
       "finepack"
     ]
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "simple-git-hooks": {
     "commit-msg": "npx commitlint --edit",
