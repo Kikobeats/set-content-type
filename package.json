@@ -2,7 +2,7 @@
   "name": "@kikobeats/set-content-type",
   "description": "Set the response content-type based on the payload bytes",
   "homepage": "https://github.com/kikobeats/set-content-type",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "main": "./src/index.js",
   "exports": {
     ".": "./src/index.js"
