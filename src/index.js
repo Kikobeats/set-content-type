@@ -1,7 +1,7 @@
 'use strict'
 
 const { fileTypeFromBuffer } = require('file-type')
-const { Transform } = require('stream')
+const { Transform, pipeline } = require('stream')
 
 const hasContentType = res => {
   if (typeof res.hasHeader === 'function') return res.hasHeader('content-type')
@@ -33,6 +33,6 @@ module.exports = res => {
   })
 
   // Forward to the response so the caller only pipes once.
-  sniffer.pipe(res)
+  pipeline(sniffer, res, () => {})
   return sniffer
 }
