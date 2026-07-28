@@ -2,6 +2,7 @@
 
 const { Readable, PassThrough } = require('stream')
 const test = require('ava').default
+const { once } = require('events')
 
 const setContentType = require('..')
 
@@ -56,7 +57,9 @@ test('does nothing when the response is already on the wire', async t => {
 
 test('leaves content-type unset for an unrecognized payload', async t => {
   const res = createRes()
-  Readable.from([Buffer.from([0x01, 0x02, 0x03, 0x04])]).pipe(setContentType(res))
+  Readable.from([Buffer.from([0x01, 0x02, 0x03, 0x04])]).pipe(
+    setContentType(res)
+  )
   await collect(res)
   t.is(res.getHeader('content-type'), undefined)
 })
@@ -68,4 +71,54 @@ test('forwards the payload unchanged across multiple chunks', async t => {
   const output = await collect(res)
   t.deepEqual(output, Buffer.concat(parts))
   t.is(res.getHeader('content-type'), 'image/jpeg')
+})
+
+// A payload that keeps arriving, so the response can fail while data is still
+// in flight rather than after the transfer already finished.
+const pending = () => {
+  let timer
+  return new Readable({
+    read () {
+      timer = setTimeout(() => this.push(JPEG), 10)
+    },
+    destroy (error, callback) {
+      clearTimeout(timer)
+      callback(error)
+    }
+  })
+}
+
+const runPending = (t, sniffer) => {
+  const source = pending()
+  t.teardown(() => source.destroy())
+  source.pipe(sniffer)
+  return source
+}
+
+test('destroys the stream when the response goes away', async t => {
+  t.timeout(5000)
+  const res = createRes()
+  const sniffer = setContentType(res)
+  runPending(t, sniffer)
+
+  await once(res, 'data')
+  const closed = new Promise(resolve => sniffer.once('close', resolve))
+  res.destroy()
+  await closed
+
+  t.true(sniffer.destroyed)
+})
+
+test('does not crash when the response fails mid-stream', async t => {
+  t.timeout(5000)
+  const res = createRes()
+  const sniffer = setContentType(res)
+  runPending(t, sniffer)
+
+  await once(res, 'data')
+  const closed = new Promise(resolve => sniffer.once('close', resolve))
+  res.destroy(new Error('response failed'))
+  await closed
+
+  t.true(sniffer.destroyed)
 })
