@@ -73,9 +73,7 @@ test('forwards the payload unchanged across multiple chunks', async t => {
   t.is(res.getHeader('content-type'), 'image/jpeg')
 })
 
-// A payload that keeps arriving, so the response can fail while data is still
-// in flight rather than after the transfer already finished.
-const pending = () => {
+const neverEnding = () => {
   let timer
   return new Readable({
     read () {
@@ -88,8 +86,8 @@ const pending = () => {
   })
 }
 
-const runPending = (t, sniffer) => {
-  const source = pending()
+const pipeNeverEnding = (t, sniffer) => {
+  const source = neverEnding()
   t.teardown(() => source.destroy())
   source.pipe(sniffer)
   return source
@@ -99,7 +97,7 @@ test('destroys the stream when the response goes away', async t => {
   t.timeout(5000)
   const res = createRes()
   const sniffer = setContentType(res)
-  runPending(t, sniffer)
+  pipeNeverEnding(t, sniffer)
 
   await once(res, 'data')
   const closed = new Promise(resolve => sniffer.once('close', resolve))
@@ -113,7 +111,7 @@ test('does not crash when the response fails mid-stream', async t => {
   t.timeout(5000)
   const res = createRes()
   const sniffer = setContentType(res)
-  runPending(t, sniffer)
+  pipeNeverEnding(t, sniffer)
 
   await once(res, 'data')
   const closed = new Promise(resolve => sniffer.once('close', resolve))

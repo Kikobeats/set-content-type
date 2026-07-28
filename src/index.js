@@ -32,8 +32,7 @@ module.exports = res => {
     }
   })
 
-  // Forward to the response so the caller only pipes once. pipeline, not pipe:
-  // a failing response destroys the sniffer instead of crashing the process.
+  // Forward to the response so the caller only pipes once.
   pipeline(sniffer, res, () => {})
   return sniffer
 }
