@@ -52,54 +52,24 @@ test('forwards the payload unchanged across multiple chunks', async t => {
   t.is(res.getHeader('content-type'), 'image/jpeg')
 })
 
-const neverEnding = () => {
-  const fillsTheSample = Buffer.concat([
-    JPEG,
-    Buffer.alloc(reasonableDetectionSizeInBytes, 7)
-  ])
+const FILLS_THE_SAMPLE = Buffer.concat([
+  JPEG,
+  Buffer.alloc(reasonableDetectionSizeInBytes, 7)
+])
+
+const LEAVES_THE_SAMPLE_HUNGRY = Buffer.alloc(8, 7)
+
+// Not `events.once`, which rejects on the `error` that `pipeline` emits ahead
+// of `close` when it tears the sniffer down.
+const closes = stream => new Promise(resolve => stream.once('close', resolve))
+
+// Pushes once and then stalls, so the sniffer stays open for as long as the
+// test needs it to.
+const pipeStalling = (t, sniffer, chunk) => {
   let timer
-  return new Readable({
-    read () {
-      timer = setTimeout(() => this.push(fillsTheSample), 10)
-    },
-    destroy (error, callback) {
-      clearTimeout(timer)
-      callback(error)
-    }
-  })
-}
-
-const pipeNeverEnding = (t, sniffer) => {
-  const source = neverEnding()
-  t.teardown(() => source.destroy())
-  source.pipe(sniffer)
-  return source
-}
-
-test('destroys the stream when the response goes away', async t => {
-  t.timeout(5000)
-  const res = createRes()
-  const sniffer = setContentType(res)
-  pipeNeverEnding(t, sniffer)
-
-  await once(res, 'data')
-  const closed = new Promise(resolve => sniffer.once('close', resolve))
-  res.destroy()
-  await closed
-
-  t.true(sniffer.destroyed)
-})
-
-// Pushes once and then stalls, so the sample never fills and detection stays
-// pending for as long as the test needs it to.
-const pipeNeverDetecting = (t, sniffer) => {
-  let timer
-  let pushed = false
   const source = new Readable({
     read () {
-      if (pushed) return
-      pushed = true
-      timer = setTimeout(() => this.push(Buffer.alloc(8, 7)), 5)
+      timer ??= setTimeout(() => this.push(chunk), 5)
     },
     destroy (error, callback) {
       clearTimeout(timer)
@@ -108,31 +78,37 @@ const pipeNeverDetecting = (t, sniffer) => {
   })
   t.teardown(() => source.destroy())
   source.pipe(sniffer)
-  return source
 }
 
+for (const [when, error] of [
+  ['goes away', undefined],
+  ['fails mid-stream', new Error('response failed')]
+]) {
+  test(`destroys the stream when the response ${when}`, async t => {
+    t.timeout(5000)
+    const res = createRes()
+    const sniffer = setContentType(res)
+    pipeStalling(t, sniffer, FILLS_THE_SAMPLE)
+
+    await once(res, 'data')
+    const closed = closes(sniffer)
+    res.destroy(error)
+    await closed
+
+    t.true(sniffer.destroyed)
+  })
+}
+
+// Detection is still pending, so nothing has wired the sniffer to `res` by way
+// of a forwarded chunk yet.
 test('destroys the stream when the response goes away mid-detection', async t => {
   t.timeout(5000)
   const res = createRes()
   const sniffer = setContentType(res)
-  pipeNeverDetecting(t, sniffer)
+  pipeStalling(t, sniffer, LEAVES_THE_SAMPLE_HUNGRY)
 
-  const closed = new Promise(resolve => sniffer.once('close', resolve))
+  const closed = closes(sniffer)
   res.destroy()
-  await closed
-
-  t.true(sniffer.destroyed)
-})
-
-test('does not crash when the response fails mid-stream', async t => {
-  t.timeout(5000)
-  const res = createRes()
-  const sniffer = setContentType(res)
-  pipeNeverEnding(t, sniffer)
-
-  await once(res, 'data')
-  const closed = new Promise(resolve => sniffer.once('close', resolve))
-  res.destroy(new Error('response failed'))
   await closed
 
   t.true(sniffer.destroyed)
