@@ -1,6 +1,6 @@
 'use strict'
 
-const { Readable } = require('stream')
+const { Readable, PassThrough } = require('stream')
 const test = require('ava').default
 const { once } = require('events')
 
@@ -71,19 +71,11 @@ const LEAVES_THE_SAMPLE_HUNGRY = Buffer.alloc(8, 7)
 // of `close` when it tears the sniffer down.
 const closes = stream => new Promise(resolve => stream.once('close', resolve))
 
-// Pushes once and then stalls, so the sniffer stays open for as long as the
-// test needs it to.
+// Written but never ended, so the sniffer stays open for as long as the test
+// needs it to.
 const pipeStalling = (t, sniffer, chunk) => {
-  let timer
-  const source = new Readable({
-    read () {
-      timer ??= setTimeout(() => this.push(chunk), 5)
-    },
-    destroy (error, callback) {
-      clearTimeout(timer)
-      callback(error)
-    }
-  })
+  const source = new PassThrough()
+  source.write(chunk)
   t.teardown(() => source.destroy())
   source.pipe(sniffer)
 }
@@ -107,8 +99,8 @@ for (const [when, error] of [
   })
 }
 
-// Detection is still pending, so nothing has wired the sniffer to `res` by way
-// of a forwarded chunk yet.
+// The sample never fills, so this one tears down with detection still pending
+// and not a byte forwarded — the case a deferred `pipeline` used to strand.
 test('destroys the stream when the response goes away mid-detection', async t => {
   t.timeout(5000)
   const res = createRes()
