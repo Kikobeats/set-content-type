@@ -44,9 +44,17 @@ The outgoing response whose `content-type` should be set when missing.
 
 It returns a [`Transform`](https://nodejs.org/api/stream.html#class-streamtransform)
 stream **already piped to `res`** — pipe your upstream into it and you are done.
-The first chunk is inspected to detect the type — `file-type` works on partial
-data, so the whole payload is never buffered. The chunk is held until detection
-resolves, guaranteeing the header is set before the first write to `res`.
+
+Incoming bytes are sampled until the type is known, so a signature split across
+chunk boundaries is still detected. Bytes are held until detection resolves,
+guaranteeing the header is set before the first write to `res`.
+
+Nothing is held once the type settles, so a payload with a recognizable header
+is released on the first chunk. A payload that is never recognized is released
+when the sample fills or when the stream ends, whichever comes first. The sample
+is capped at 4100 bytes, the detection window
+[`file-type` considers reasonable](https://github.com/sindresorhus/file-type#filetypestreamreadablestream-options),
+so the whole payload is never buffered.
 
 The header is **not** set when:
 
