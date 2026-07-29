@@ -4,6 +4,8 @@ const { Readable, PassThrough } = require('stream')
 const test = require('ava').default
 const { once } = require('events')
 
+const { reasonableDetectionSizeInBytes } = require('file-type')
+
 const setContentType = require('..')
 
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])
@@ -123,12 +125,25 @@ test('does not crash when the response fails mid-stream', async t => {
 
 const IMAGE = Buffer.concat([JPEG, Buffer.alloc(64, 7)])
 
-const chunked = (buffer, size) => {
+const split = (buffer, size) => {
   const parts = []
   for (let index = 0; index < buffer.length; index += size) {
     parts.push(buffer.subarray(index, index + size))
   }
-  return Readable.from(parts)
+  return parts
+}
+
+const chunked = (buffer, size) => Readable.from(split(buffer, size))
+
+// One part in flight at a time, so the byte count reported by `onWrite`
+// is what the sniffer has actually taken when the first byte comes out.
+const pump = (stream, parts, onWrite) => {
+  const next = index => {
+    if (index === parts.length) return stream.end()
+    onWrite(parts[index].length)
+    stream.write(parts[index], () => setImmediate(() => next(index + 1)))
+  }
+  next(0)
 }
 
 test('detects the content-type when the signature spans chunks', async t => {
@@ -186,4 +201,27 @@ test('sets the content-type on a response without header helpers', async t => {
   await collect(res)
 
   t.is(headers['content-type'], 'image/jpeg')
+})
+
+test('releases an unrecognized payload once the sample is full', async t => {
+  const payload = Buffer.alloc(reasonableDetectionSizeInBytes + 512, 1)
+  const res = createRes()
+  const sniffer = setContentType(res)
+  const collected = collect(res)
+
+  let written = 0
+  let heldUntil = null
+  res.on('data', () => {
+    heldUntil ??= written
+  })
+
+  pump(sniffer, split(payload, 64), size => {
+    written += size
+  })
+  const output = await collected
+
+  t.is(res.getHeader('content-type'), undefined)
+  t.deepEqual(output, payload)
+  t.true(heldUntil < payload.length)
+  t.true(heldUntil <= reasonableDetectionSizeInBytes + 64)
 })
