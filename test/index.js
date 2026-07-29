@@ -90,6 +90,40 @@ test('destroys the stream when the response goes away', async t => {
   t.true(sniffer.destroyed)
 })
 
+// Pushes once and then stalls, so the sample never fills and detection stays
+// pending for as long as the test needs it to.
+const pipeNeverDetecting = (t, sniffer) => {
+  let timer
+  let pushed = false
+  const source = new Readable({
+    read () {
+      if (pushed) return
+      pushed = true
+      timer = setTimeout(() => this.push(Buffer.alloc(8, 7)), 5)
+    },
+    destroy (error, callback) {
+      clearTimeout(timer)
+      callback(error)
+    }
+  })
+  t.teardown(() => source.destroy())
+  source.pipe(sniffer)
+  return source
+}
+
+test('destroys the stream when the response goes away mid-detection', async t => {
+  t.timeout(5000)
+  const res = createRes()
+  const sniffer = setContentType(res)
+  pipeNeverDetecting(t, sniffer)
+
+  const closed = new Promise(resolve => sniffer.once('close', resolve))
+  res.destroy()
+  await closed
+
+  t.true(sniffer.destroyed)
+})
+
 test('does not crash when the response fails mid-stream', async t => {
   t.timeout(5000)
   const res = createRes()

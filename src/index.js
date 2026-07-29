@@ -18,6 +18,11 @@ module.exports = res => {
   // `Readable.toWeb` reallocates every chunk; `from` enqueues the buffers as is.
   const source = ReadableStream.from(sniffer)
 
+  // Nothing links `res` back to `sniffer` until `forward` runs, so a response
+  // that goes away while the sample is still filling would leave it draining
+  // the upstream into a body no one will read.
+  res.once('close', () => sniffer.destroy())
+
   fileTypeStream(source).then(
     sampled => {
       const mime = sampled.fileType?.mime
