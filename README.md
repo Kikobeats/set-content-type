@@ -45,16 +45,19 @@ The outgoing response whose `content-type` should be set when missing.
 It returns a [`Transform`](https://nodejs.org/api/stream.html#class-streamtransform)
 stream **already piped to `res`** — pipe your upstream into it and you are done.
 
-Incoming bytes are sampled until the type is known, so a signature split across
-chunk boundaries is still detected. Bytes are held until detection resolves,
-guaranteeing the header is set before the first write to `res`.
-
-Nothing is held once the type settles, so a payload with a recognizable header
-is released on the first chunk. A payload that is never recognized is released
-when the sample fills or when the stream ends, whichever comes first. The sample
-is capped at 4100 bytes, the detection window
+Incoming bytes are sampled until 4100 bytes have arrived or the stream ends,
+whichever comes first. Detection then runs once over the sample, so a signature
+split across chunk boundaries is still recognized, and the header is always set
+before the first write to `res`. 4100 is the detection window
 [`file-type` considers reasonable](https://github.com/sindresorhus/file-type#filetypestreamreadablestream-options),
 so the whole payload is never buffered.
+
+Sampling waits for the full window instead of stopping at the first match
+because a container reports a generic type until the sample reaches the marker
+naming the real one: a `.docx` reads as `application/zip` and a `.heic` as
+`video/mp4` until then. Detecting from the first chunk alone sets the generic
+type whenever the upstream delivers small chunks, which is exactly what a slow
+origin, a TLS record boundary or a proxy produces.
 
 The header is **not** set when:
 

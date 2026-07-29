@@ -6,33 +6,10 @@ const { once } = require('events')
 
 const { reasonableDetectionSizeInBytes } = require('file-type')
 
+const { createRes, collect } = require('./helpers/response')
 const setContentType = require('..')
 
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])
-
-// `res` is the terminal stream, so collecting from it captures the payload
-// that reached the response.
-const collect = res =>
-  new Promise((resolve, reject) => {
-    const chunks = []
-    res
-      .on('data', chunk => chunks.push(chunk))
-      .on('end', () => resolve(Buffer.concat(chunks)))
-      .on('error', reject)
-  })
-
-// A response that is also a writable stream, so the forwarded payload can be
-// asserted while still exposing the header helpers.
-const createRes = (headers = {}) => {
-  const res = new PassThrough()
-  res.headersSent = false
-  res.setHeader = (key, value) => {
-    headers[key.toLowerCase()] = value
-  }
-  res.getHeader = key => headers[key.toLowerCase()]
-  res.hasHeader = key => headers[key.toLowerCase()] !== undefined
-  return res
-}
 
 test('sets content-type from the payload bytes when missing', async t => {
   const res = createRes()
@@ -75,11 +52,17 @@ test('forwards the payload unchanged across multiple chunks', async t => {
   t.is(res.getHeader('content-type'), 'image/jpeg')
 })
 
+// Each push fills the sample on its own, so the response starts receiving
+// without waiting for the detection cap to fill one small chunk at a time.
 const neverEnding = () => {
+  const chunk = Buffer.concat([
+    JPEG,
+    Buffer.alloc(reasonableDetectionSizeInBytes, 7)
+  ])
   let timer
   return new Readable({
     read () {
-      timer = setTimeout(() => this.push(JPEG), 10)
+      timer = setTimeout(() => this.push(chunk), 10)
     },
     destroy (error, callback) {
       clearTimeout(timer)

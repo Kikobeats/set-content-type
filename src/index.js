@@ -43,19 +43,19 @@ module.exports = res => {
         return callback(null, settle(chunk))
       }
 
+      // A container reports a generic type until the sample reaches the marker
+      // naming the real one, so detection waits for the full sample.
       sample = Buffer.concat([sample, chunk])
-      const mime = await mimeFromBuffer(sample)
+      if (sample.length < reasonableDetectionSizeInBytes) return callback()
 
-      const undetected =
-        mime === undefined && sample.length < reasonableDetectionSizeInBytes
-      if (undetected) return callback()
-
-      setContentTypeHeader(res, mime)
+      setContentTypeHeader(res, await mimeFromBuffer(sample))
       callback(null, settle(sample))
     },
 
-    flush (callback) {
+    async flush (callback) {
       if (settled || sample.length === 0) return callback()
+
+      setContentTypeHeader(res, await mimeFromBuffer(sample))
       callback(null, settle(sample))
     }
   })
