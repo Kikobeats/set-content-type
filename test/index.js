@@ -43,6 +43,14 @@ test('leaves content-type unset for an unrecognized payload', async t => {
   t.is(res.getHeader('content-type'), undefined)
 })
 
+test('accepts the string writes any writable accepts', async t => {
+  const res = createRes()
+  const sniffer = setContentType(res)
+  sniffer.end('hello world')
+
+  t.deepEqual(await collect(res), Buffer.from('hello world'))
+})
+
 test('forwards the payload unchanged across multiple chunks', async t => {
   const res = createRes()
   const parts = [JPEG, Buffer.from('hello'), Buffer.from('world')]
