@@ -116,16 +116,10 @@ const split = (buffer, size) => {
 
 const byteByByte = buffer => Readable.from(split(buffer, 1))
 
-// One part in flight at a time, so the byte count reported by `onWrite`
-// is what the sniffer has actually taken when the first byte comes out.
-const pump = (stream, parts, onWrite) => {
-  const next = index => {
-    if (index === parts.length) return stream.end()
-    onWrite(parts[index].length)
-    stream.write(parts[index], () => setImmediate(() => next(index + 1)))
-  }
-  next(0)
-}
+// One part in flight at a time, so the byte count the test tracks is what the
+// sniffer has actually taken when the first byte comes out.
+const write = (stream, part) =>
+  new Promise(resolve => stream.write(part, () => setImmediate(resolve)))
 
 test('detects the content-type when the signature spans chunks', async t => {
   const res = createRes()
@@ -167,9 +161,11 @@ test('releases an unrecognized payload once the sample is full', async t => {
     heldUntil ??= written
   })
 
-  pump(sniffer, split(payload, 64), size => {
-    written += size
-  })
+  for (const part of split(payload, 64)) {
+    written += part.length
+    await write(sniffer, part)
+  }
+  sniffer.end()
   const output = await collected
 
   t.is(res.getHeader('content-type'), undefined)
@@ -198,7 +194,6 @@ const zipEntry = (name, data) => {
   const filename = Buffer.from(name)
   const header = Buffer.alloc(30)
   header.writeUInt32LE(0x04034b50, 0)
-  header.writeUInt16LE(20, 4)
   header.writeUInt32LE(data.length, 18)
   header.writeUInt32LE(data.length, 22)
   header.writeUInt16LE(filename.length, 26)

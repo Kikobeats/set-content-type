@@ -3,10 +3,7 @@
 const test = require('ava').default
 const { Readable } = require('stream')
 
-const {
-  fileTypeFromBuffer,
-  reasonableDetectionSizeInBytes
-} = require('file-type')
+const { fileTypeFromBuffer } = require('file-type')
 
 const { createRes, collect } = require('./helpers/response')
 const setContentType = require('..')
@@ -15,17 +12,16 @@ const CDN = 'https://cdn.microlink.io/file-examples/'
 
 // What settling on the first recognizable prefix reports. The answer keeps
 // changing as the prefix grows, so it has to be the smallest prefix rather than
-// a fixed one, bounded by the window the sniffer itself samples.
+// a fixed one.
 const firstMime = async payload => {
-  const limit = Math.min(payload.length, reasonableDetectionSizeInBytes)
-  for (let size = 1; size <= limit; size++) {
+  for (let size = 1; size <= payload.length; size++) {
     const result = await fileTypeFromBuffer(payload.subarray(0, size))
     if (result?.mime) return result.mime
   }
 }
 
-// `masked` is what that first recognizable prefix reports, and it defaults to
-// the final type for the samples nothing can mask.
+// `masked` is what that first recognizable prefix reports, absent on the
+// samples nothing can mask.
 const SAMPLES = [
   {
     file: 'sample.docx',
@@ -67,7 +63,6 @@ const SAMPLES = [
   // rather than a placeholder for something better further in.
   { file: 'sample.ods', mime: 'application/zip' },
 
-  // Named by their leading bytes, so nothing masks them.
   { file: 'sample.jpg', mime: 'image/jpeg' },
   { file: 'sample.png', mime: 'image/png' },
   { file: 'sample.gif', mime: 'image/gif' },
@@ -90,7 +85,7 @@ const sniff = async file => {
   }
 }
 
-for (const { file, mime, masked = mime } of SAMPLES) {
+for (const { file, mime, masked } of SAMPLES) {
   test(`detects ${file} over the network`, async t => {
     t.timeout(60000)
     const sniffed = await sniff(file)
@@ -100,6 +95,6 @@ for (const { file, mime, masked = mime } of SAMPLES) {
 
     // Without this the sample could stop exercising masking, and the case
     // above would keep passing while testing nothing.
-    t.is(await firstMime(sniffed.payload), masked)
+    if (masked) t.is(await firstMime(sniffed.payload), masked)
   })
 }

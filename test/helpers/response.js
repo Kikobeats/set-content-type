@@ -2,9 +2,7 @@
 
 const { PassThrough } = require('stream')
 
-// `res` is the terminal stream, so collecting from it captures the payload that
-// reached the response.
-const collect = require('stream/consumers').buffer
+const { buffer: collect } = require('stream/consumers')
 
 // A response that is also a writable stream, so the forwarded payload can be
 // asserted while still exposing the header helpers.

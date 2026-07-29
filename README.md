@@ -45,17 +45,18 @@ The outgoing response whose `content-type` should be set when missing.
 It returns a [`Transform`](https://nodejs.org/api/stream.html#class-streamtransform)
 stream **already piped to `res`** — pipe your upstream into it and you are done.
 
-Incoming bytes are sampled until
-[`file-type`'s detection window](https://github.com/sindresorhus/file-type#filetypestreamreadablestream-options)
-is full or the stream ends, whichever comes first. Detection then runs once over
-the sample, so a signature split across chunk boundaries is still recognized, and
-the header is always set before the first write to `res`. The whole payload is
-never buffered.
+The header is always set before the first byte is written to `res`. Detection is
+delegated to
+[`fileTypeStream`](https://github.com/sindresorhus/file-type#filetypestreamwebstream-options),
+which samples up to ~4 KB before deciding, so a signature split across chunk
+boundaries is still recognized. The payload itself is never buffered.
 
-Waiting for the full window instead of stopping at the first match is what makes
-containers report their real type: a `.docx` reads as `application/zip` and a
-`.heic` as `video/mp4` until the sample reaches the marker naming the real
-format. The cost is that the first bytes reach `res` only once the window fills.
+Sampling that far is what makes containers report their real type: a `.docx`
+reads as `application/zip` and a `.heic` as `video/mp4` until the sample reaches
+the marker naming the real format. The cost is that the first bytes reach `res`
+only once the sample is complete, so a body smaller than the sample is held
+until the upstream ends. Nothing is sampled when `res` already has a
+`content-type`.
 
 The header is **not** set when:
 
