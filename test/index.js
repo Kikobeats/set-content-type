@@ -4,7 +4,7 @@ const { Readable } = require('stream')
 const test = require('ava').default
 const { once } = require('events')
 
-const { reasonableDetectionSizeInBytes } = require('file-type')
+const { FileTypeParser, reasonableDetectionSizeInBytes } = require('file-type')
 
 const { createRes, collect } = require('./helpers/response')
 const setContentType = require('..')
@@ -176,6 +176,25 @@ test('forwards the payload when the response refuses the header', async t => {
   Readable.from([IMAGE]).pipe(setContentType(res))
 
   t.deepEqual(await collect(res), IMAGE)
+})
+
+// `file-type` reads the sample off the stream before parsing it, so a parser
+// that throws leaves those bytes unreachable. Serial and restored, because the
+// patch is global for as long as it is installed.
+test.serial('destroys the response when detection throws', async t => {
+  const { fromBuffer } = FileTypeParser.prototype
+  t.teardown(() => {
+    FileTypeParser.prototype.fromBuffer = fromBuffer
+  })
+  FileTypeParser.prototype.fromBuffer = async () => {
+    throw new Error('parser blew up')
+  }
+
+  const res = createRes()
+  Readable.from([IMAGE]).pipe(setContentType(res))
+
+  const error = await t.throwsAsync(collect(res))
+  t.is(error.message, 'parser blew up')
 })
 
 // A ZIP whose first entry names the real format, which is how every Office and

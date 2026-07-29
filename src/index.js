@@ -28,7 +28,9 @@ module.exports = res => {
       }
       forward(sampled)
     },
-    () => forward(source)
+    // The sample was read off `source` and is unreachable once detection
+    // throws, so forwarding what is left would serve a truncated body as 200.
+    error => res.destroy(error)
   )
 
   return sniffer
