@@ -120,3 +120,70 @@ test('does not crash when the response fails mid-stream', async t => {
 
   t.true(sniffer.destroyed)
 })
+
+const IMAGE = Buffer.concat([JPEG, Buffer.alloc(64, 7)])
+
+const chunked = (buffer, size) => {
+  const parts = []
+  for (let index = 0; index < buffer.length; index += size) {
+    parts.push(buffer.subarray(index, index + size))
+  }
+  return Readable.from(parts)
+}
+
+test('detects the content-type when the signature spans chunks', async t => {
+  const res = createRes()
+  chunked(IMAGE, 1).pipe(setContentType(res))
+  const output = await collect(res)
+
+  t.is(res.getHeader('content-type'), 'image/jpeg')
+  t.deepEqual(output, IMAGE)
+})
+
+test('detects the content-type from small chunks', async t => {
+  const res = createRes()
+  chunked(IMAGE, 3).pipe(setContentType(res))
+  const output = await collect(res)
+
+  t.is(res.getHeader('content-type'), 'image/jpeg')
+  t.deepEqual(output, IMAGE)
+})
+
+test('leaves content-type unset for an unrecognized chunked payload', async t => {
+  const payload = Buffer.alloc(32, 1)
+  const res = createRes()
+  chunked(payload, 1).pipe(setContentType(res))
+  const output = await collect(res)
+
+  t.is(res.getHeader('content-type'), undefined)
+  t.deepEqual(output, payload)
+})
+
+test('reads the content-type from a response without hasHeader', async t => {
+  const headers = { 'content-type': 'image/png' }
+  const res = Object.assign(new PassThrough(), {
+    headersSent: false,
+    setHeader: (key, value) => {
+      headers[key.toLowerCase()] = value
+    },
+    getHeader: key => headers[key.toLowerCase()]
+  })
+  Readable.from([IMAGE]).pipe(setContentType(res))
+  await collect(res)
+
+  t.is(headers['content-type'], 'image/png')
+})
+
+test('sets the content-type on a response without header helpers', async t => {
+  const headers = {}
+  const res = Object.assign(new PassThrough(), {
+    headersSent: false,
+    setHeader: (key, value) => {
+      headers[key.toLowerCase()] = value
+    }
+  })
+  Readable.from([IMAGE]).pipe(setContentType(res))
+  await collect(res)
+
+  t.is(headers['content-type'], 'image/jpeg')
+})
