@@ -48,15 +48,14 @@ stream **already piped to `res`** — pipe your upstream into it and you are don
 The header is always set before the first byte is written to `res`. Detection is
 delegated to
 [`fileTypeStream`](https://github.com/sindresorhus/file-type#filetypestreamwebstream-options),
-which samples up to ~4 KB before deciding, so a signature split across chunk
-boundaries is still recognized. The payload itself is never buffered.
+which holds up to ~4 KB before deciding, so a signature split across chunk
+boundaries is still recognized, and a container reports its real type rather
+than its envelope — a `.docx` reads as `application/zip` and a `.heic` as
+`video/mp4` until the sample reaches the marker naming the real format.
 
-Sampling that far is what makes containers report their real type: a `.docx`
-reads as `application/zip` and a `.heic` as `video/mp4` until the sample reaches
-the marker naming the real format. The cost is that the first bytes reach `res`
-only once the sample is complete, so a body smaller than the sample is held
-until the upstream ends. Nothing is sampled when `res` already has a
-`content-type`.
+Nothing beyond that sample is ever held, so the cost is bounded: a body smaller
+than the sample reaches `res` when the upstream ends. Nothing is sampled at all
+when `res` already has a `content-type`.
 
 The header is **not** set when:
 

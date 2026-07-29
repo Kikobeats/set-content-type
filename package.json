@@ -75,7 +75,7 @@
   "license": "MIT",
   "ava": {
     "files": [
-      "test/index.js"
+      "!test/e2e.js"
     ]
   },
   "commitlint": {

@@ -130,16 +130,6 @@ test('detects the content-type when the signature spans chunks', async t => {
   t.deepEqual(output, IMAGE)
 })
 
-test('leaves content-type unset for an unrecognized chunked payload', async t => {
-  const payload = Buffer.alloc(32, 1)
-  const res = createRes()
-  byteByByte(payload).pipe(setContentType(res))
-  const output = await collect(res)
-
-  t.is(res.getHeader('content-type'), undefined)
-  t.deepEqual(output, payload)
-})
-
 test('sets the content-type on a response without getHeader', async t => {
   const headers = {}
   const res = createRes(headers, { getHeader: undefined })

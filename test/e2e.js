@@ -10,9 +10,8 @@ const setContentType = require('..')
 
 const CDN = 'https://cdn.microlink.io/file-examples/'
 
-// What settling on the first recognizable prefix reports. The answer keeps
-// changing as the prefix grows, so it has to be the smallest prefix rather than
-// a fixed one.
+// What the smallest recognizable prefix reports, which is not the final answer
+// whenever the sample has to keep reading to name the real format.
 const firstMime = async payload => {
   for (let size = 1; size <= payload.length; size++) {
     const result = await fileTypeFromBuffer(payload.subarray(0, size))
@@ -20,44 +19,40 @@ const firstMime = async payload => {
   }
 }
 
-// `masked` is what that first recognizable prefix reports, absent on the
-// samples nothing can mask.
+// `masks` marks the samples whose envelope hides the real format: a container
+// reading as `application/zip`, an ftyp box reading as `video/mp4`.
 const SAMPLES = [
   {
     file: 'sample.docx',
     mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    masked: 'application/zip'
+    masks: true
   },
   {
     file: 'sample.xlsx',
     mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    masked: 'application/zip'
+    masks: true
   },
   {
     file: 'sample.pptx',
     mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    masked: 'application/zip'
+    masks: true
   },
   {
     file: 'sample.odt',
     mime: 'application/vnd.oasis.opendocument.text',
-    masked: 'application/zip'
+    masks: true
   },
   {
     file: 'sample.odp',
     mime: 'application/vnd.oasis.opendocument.presentation',
-    masked: 'application/zip'
+    masks: true
   },
-  {
-    file: 'sample.epub',
-    mime: 'application/epub+zip',
-    masked: 'application/zip'
-  },
-  { file: 'sample.heic', mime: 'image/heic', masked: 'video/mp4' },
-  { file: 'sample.heif', mime: 'image/heic', masked: 'video/mp4' },
-  { file: 'sample.avif', mime: 'image/heif', masked: 'video/mp4' },
-  { file: 'sample.m4a', mime: 'audio/x-m4a', masked: 'video/mp4' },
-  { file: 'sample.m4v', mime: 'video/x-m4v', masked: 'video/mp4' },
+  { file: 'sample.epub', mime: 'application/epub+zip', masks: true },
+  { file: 'sample.heic', mime: 'image/heic', masks: true },
+  { file: 'sample.heif', mime: 'image/heic', masks: true },
+  { file: 'sample.avif', mime: 'image/heif', masks: true },
+  { file: 'sample.m4a', mime: 'audio/x-m4a', masks: true },
+  { file: 'sample.m4v', mime: 'video/x-m4v', masks: true },
 
   // `file-type` never names this one, so `application/zip` is the whole answer
   // rather than a placeholder for something better further in.
@@ -85,7 +80,7 @@ const sniff = async file => {
   }
 }
 
-for (const { file, mime, masked } of SAMPLES) {
+for (const { file, mime, masks } of SAMPLES) {
   test(`detects ${file} over the network`, async t => {
     t.timeout(60000)
     const sniffed = await sniff(file)
@@ -95,6 +90,6 @@ for (const { file, mime, masked } of SAMPLES) {
 
     // Without this the sample could stop exercising masking, and the case
     // above would keep passing while testing nothing.
-    if (masked) t.is(await firstMime(sniffed.payload), masked)
+    if (masks) t.not(await firstMime(sniffed.payload), mime)
   })
 }

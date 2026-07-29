@@ -1,6 +1,6 @@
 'use strict'
 
-const { PassThrough, Readable, pipeline } = require('stream')
+const { PassThrough, pipeline } = require('stream')
 const { fileTypeStream } = require('file-type')
 
 const canSetContentType = res =>
@@ -15,19 +15,20 @@ module.exports = res => {
     return sniffer
   }
 
-  const source = Readable.toWeb(sniffer)
+  // `Readable.toWeb` reallocates every chunk; `from` enqueues the buffers as is.
+  const source = ReadableStream.from(sniffer)
 
   fileTypeStream(source).then(
     sampled => {
-      const { mime } = sampled.fileType ?? {}
+      const mime = sampled.fileType?.mime
       try {
         if (mime && canSetContentType(res)) res.setHeader('content-type', mime)
       } catch {
         // detection never gets in the way of the payload
       }
-      forward(Readable.fromWeb(sampled))
+      forward(sampled)
     },
-    () => forward(Readable.fromWeb(source))
+    () => forward(source)
   )
 
   return sniffer
