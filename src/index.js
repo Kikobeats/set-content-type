@@ -1,63 +1,62 @@
 'use strict'
 
+const { Transform, pipeline } = require('stream')
+
 const {
   fileTypeFromBuffer,
   reasonableDetectionSizeInBytes
 } = require('file-type')
-const { Transform, pipeline } = require('stream')
 
-const hasContentType = res => {
-  if (typeof res.hasHeader === 'function') return res.hasHeader('content-type')
-  if (typeof res.getHeader === 'function') {
-    return res.getHeader('content-type') !== undefined
+const hasContentType = res => res.getHeader?.('content-type') !== undefined
+
+const mimeFromBuffer = buffer =>
+  fileTypeFromBuffer(buffer).then(
+    result => result?.mime,
+    () => undefined
+  )
+
+const setContentTypeHeader = (res, mime) => {
+  if (!mime || res.headersSent) return
+  try {
+    res.setHeader('content-type', mime)
+  } catch {
+    // a response that refuses the header still gets its payload
   }
-  return false
 }
 
 module.exports = res => {
-  const sample = []
-  let sampled = 0
+  let sample = Buffer.alloc(0)
   let settled = false
 
-  const detect = async () => {
-    const payload = Buffer.concat(sample)
-    const result = await fileTypeFromBuffer(payload).catch(() => undefined)
-    if (result?.mime && !res.headersSent) {
-      res.setHeader('content-type', result.mime)
-    }
-    return { payload, mime: result?.mime }
-  }
-
-  const release = (callback, payload) => {
+  const settle = payload => {
     settled = true
-    callback(null, payload)
+    sample = Buffer.alloc(0) // stop pinning the accumulated chunks
+    return payload
   }
 
   const sniffer = new Transform({
-    transform (chunk, _encoding, callback) {
+    async transform (chunk, _encoding, callback) {
       if (settled) return callback(null, chunk)
 
       // Respect an existing `content-type` and a response already on the wire.
       if (res.headersSent || hasContentType(res)) {
-        return release(callback, chunk)
+        return callback(null, settle(chunk))
       }
 
-      sample.push(chunk)
-      sampled += chunk.length
+      sample = Buffer.concat([sample, chunk])
+      const mime = await mimeFromBuffer(sample)
 
-      detect()
-        .then(({ payload, mime }) => {
-          const undetected =
-            mime === undefined && sampled < reasonableDetectionSizeInBytes
-          if (undetected) return callback()
-          release(callback, payload)
-        })
-        .catch(() => release(callback, Buffer.concat(sample)))
+      const undetected =
+        mime === undefined && sample.length < reasonableDetectionSizeInBytes
+      if (undetected) return callback()
+
+      setContentTypeHeader(res, mime)
+      callback(null, settle(sample))
     },
 
     flush (callback) {
-      if (settled || sampled === 0) return callback()
-      release(callback, Buffer.concat(sample))
+      if (settled || sample.length === 0) return callback()
+      callback(null, settle(sample))
     }
   })
 

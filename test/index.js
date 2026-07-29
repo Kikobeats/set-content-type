@@ -225,3 +225,15 @@ test('releases an unrecognized payload once the sample is full', async t => {
   t.true(heldUntil < payload.length)
   t.true(heldUntil <= reasonableDetectionSizeInBytes + 64)
 })
+
+test('forwards the payload when the response refuses the header', async t => {
+  const res = Object.assign(new PassThrough(), {
+    headersSent: false,
+    setHeader: () => {
+      throw new Error('header refused')
+    }
+  })
+  Readable.from([IMAGE]).pipe(setContentType(res))
+
+  t.deepEqual(await collect(res), IMAGE)
+})
