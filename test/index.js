@@ -220,3 +220,31 @@ test('forwards the payload when the response refuses the header', async t => {
 
   t.deepEqual(await collect(res), IMAGE)
 })
+
+// A ZIP whose first entry names the real format. `file-type` reports
+// `application/zip` until the sample reaches that entry, which is how every
+// Office and OpenDocument container behaves.
+const zipEntry = (name, data) => {
+  const filename = Buffer.from(name)
+  const header = Buffer.alloc(30)
+  header.writeUInt32LE(0x04034b50, 0)
+  header.writeUInt16LE(20, 4)
+  header.writeUInt32LE(data.length, 18)
+  header.writeUInt32LE(data.length, 22)
+  header.writeUInt16LE(filename.length, 26)
+  return Buffer.concat([header, filename, data])
+}
+
+const ODT = zipEntry(
+  'mimetype',
+  Buffer.from('application/vnd.oasis.opendocument.text')
+)
+
+test('detects the container type rather than the container', async t => {
+  const res = createRes()
+  chunked(ODT, 1).pipe(setContentType(res))
+  const output = await collect(res)
+
+  t.is(res.getHeader('content-type'), 'application/vnd.oasis.opendocument.text')
+  t.deepEqual(output, ODT)
+})
