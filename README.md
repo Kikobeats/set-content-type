@@ -42,11 +42,22 @@ Type: `http.ServerResponse`
 
 The outgoing response whose `content-type` should be set when missing.
 
-It returns a [`Transform`](https://nodejs.org/api/stream.html#class-streamtransform)
-stream **already piped to `res`** — pipe your upstream into it and you are done.
-The first chunk is inspected to detect the type — `file-type` works on partial
-data, so the whole payload is never buffered. The chunk is held until detection
-resolves, guaranteeing the header is set before the first write to `res`.
+It returns a writable stream **already piped to `res`** — pipe your upstream into
+it and you are done.
+
+The header is always set before the first byte is written to `res`, and an
+existing `content-type` is never overridden. Detection is delegated to
+[`fileTypeStream`](https://github.com/sindresorhus/file-type#filetypestreamwebstream-options),
+which holds a sample before deciding, so a signature split across chunk
+boundaries is still recognized and a container reports its real type rather than
+its envelope — a `.docx` as a Word document rather than `application/zip`.
+
+Buffering is bounded by that sample and nothing beyond it is held, so a body
+smaller than the sample reaches `res` when the upstream ends. Nothing is sampled
+at all when `res` already has a `content-type`.
+
+If detection itself fails, the error surfaces on the returned stream and `res`
+is destroyed rather than sent a body the sample has already eaten into.
 
 The header is **not** set when:
 

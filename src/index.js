@@ -1,38 +1,36 @@
 'use strict'
 
-const { fileTypeFromBuffer } = require('file-type')
-const { Transform, pipeline } = require('stream')
+const { Duplex, PassThrough, pipeline } = require('stream')
+const { fileTypeStream } = require('file-type')
 
-const hasContentType = res => {
-  if (typeof res.hasHeader === 'function') return res.hasHeader('content-type')
-  if (typeof res.getHeader === 'function') {
-    return res.getHeader('content-type') !== undefined
-  }
-  return false
-}
+const canSetContentType = res =>
+  !res.headersSent && res.getHeader?.('content-type') === undefined
 
-module.exports = res => {
-  const sniffer = new Transform({
-    transform (chunk, _encoding, callback) {
-      // Only the first chunk is inspected; `file-type` works on partial data.
-      if (this.sniffed) return callback(null, chunk)
-      this.sniffed = true
+const detector = res =>
+  Duplex.from(async function * (payload) {
+    // `Readable.toWeb` reallocates every chunk; `from` enqueues the buffers as is.
+    const sampled = await fileTypeStream(ReadableStream.from(payload))
+    const mime = sampled.fileType?.mime
 
-      // Respect an existing `content-type` and a response already on the wire.
-      if (res.headersSent || hasContentType(res)) return callback(null, chunk)
-
-      fileTypeFromBuffer(chunk)
-        .then(result => {
-          if (result?.mime && !res.headersSent) {
-            res.setHeader('content-type', result.mime)
-          }
-          callback(null, chunk)
-        })
-        .catch(() => callback(null, chunk))
+    try {
+      if (mime && canSetContentType(res)) res.setHeader('content-type', mime)
+    } catch {
+      // detection never gets in the way of the payload
     }
+
+    yield * sampled
   })
 
-  // Forward to the response so the caller only pipes once.
-  pipeline(sniffer, res, () => {})
+module.exports = res => {
+  // The entry point is its own stream so callers get the byte mode every
+  // writable has; `Duplex.from` alone hands back an object-mode one, which
+  // rejects the string writes `res.end('…')` makes routine.
+  const sniffer = new PassThrough()
+
+  pipeline(
+    canSetContentType(res) ? [sniffer, detector(res), res] : [sniffer, res],
+    () => {}
+  )
+
   return sniffer
 }
