@@ -7,56 +7,51 @@ const {
   reasonableDetectionSizeInBytes
 } = require('file-type')
 
-const hasContentType = res => res.getHeader?.('content-type') !== undefined
-
-const mimeFromBuffer = buffer =>
-  fileTypeFromBuffer(buffer).then(
-    result => result?.mime,
-    () => undefined
-  )
-
-const setContentTypeHeader = (res, mime) => {
-  if (!mime || res.headersSent) return
-  try {
-    res.setHeader('content-type', mime)
-  } catch {
-    // a response that refuses the header still gets its payload
-  }
-}
+const canSetContentType = res =>
+  !res.headersSent && res.getHeader?.('content-type') === undefined
 
 module.exports = res => {
-  let sample = Buffer.alloc(0)
-  let settled = false
+  let chunks = []
+  let length = 0
 
-  const settle = payload => {
-    settled = true
-    sample = Buffer.alloc(0) // stop pinning the accumulated chunks
-    return payload
+  const sampling = () => chunks !== null
+
+  const sniff = async callback => {
+    const sample = Buffer.concat(chunks)
+    chunks = null
+
+    try {
+      const { mime } = (await fileTypeFromBuffer(sample)) ?? {}
+      if (mime && canSetContentType(res)) res.setHeader('content-type', mime)
+    } catch {
+      // detection never gets in the way of the payload
+    }
+
+    callback(null, sample)
   }
 
   const sniffer = new Transform({
-    async transform (chunk, _encoding, callback) {
-      if (settled) return callback(null, chunk)
+    transform (chunk, _encoding, callback) {
+      if (!sampling()) return callback(null, chunk)
 
-      // Respect an existing `content-type` and a response already on the wire.
-      if (res.headersSent || hasContentType(res)) {
-        return callback(null, settle(chunk))
+      if (!canSetContentType(res)) {
+        chunks = null
+        return callback(null, chunk)
       }
 
       // A container reports a generic type until the sample reaches the marker
       // naming the real one, so detection waits for the full sample.
-      sample = Buffer.concat([sample, chunk])
-      if (sample.length < reasonableDetectionSizeInBytes) return callback()
+      chunks.push(chunk)
+      length += chunk.length
+      if (length < reasonableDetectionSizeInBytes) return callback()
 
-      setContentTypeHeader(res, await mimeFromBuffer(sample))
-      callback(null, settle(sample))
+      sniff(callback)
     },
 
-    async flush (callback) {
-      if (settled || sample.length === 0) return callback()
+    flush (callback) {
+      if (!sampling() || length === 0) return callback()
 
-      setContentTypeHeader(res, await mimeFromBuffer(sample))
-      callback(null, settle(sample))
+      sniff(callback)
     }
   })
 

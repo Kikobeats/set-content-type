@@ -73,6 +73,11 @@
     "test:e2e": "ava test/e2e.js --serial"
   },
   "license": "MIT",
+  "ava": {
+    "files": [
+      "test/index.js"
+    ]
+  },
   "commitlint": {
     "extends": [
       "@commitlint/config-conventional"

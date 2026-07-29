@@ -1,6 +1,6 @@
 'use strict'
 
-const { Readable, PassThrough } = require('stream')
+const { Readable } = require('stream')
 const test = require('ava').default
 const { once } = require('events')
 
@@ -52,17 +52,15 @@ test('forwards the payload unchanged across multiple chunks', async t => {
   t.is(res.getHeader('content-type'), 'image/jpeg')
 })
 
-// Each push fills the sample on its own, so the response starts receiving
-// without waiting for the detection cap to fill one small chunk at a time.
 const neverEnding = () => {
-  const chunk = Buffer.concat([
+  const fillsTheSample = Buffer.concat([
     JPEG,
     Buffer.alloc(reasonableDetectionSizeInBytes, 7)
   ])
   let timer
   return new Readable({
     read () {
-      timer = setTimeout(() => this.push(chunk), 10)
+      timer = setTimeout(() => this.push(fillsTheSample), 10)
     },
     destroy (error, callback) {
       clearTimeout(timer)
@@ -116,7 +114,7 @@ const split = (buffer, size) => {
   return parts
 }
 
-const chunked = (buffer, size) => Readable.from(split(buffer, size))
+const byteByByte = buffer => Readable.from(split(buffer, 1))
 
 // One part in flight at a time, so the byte count reported by `onWrite`
 // is what the sniffer has actually taken when the first byte comes out.
@@ -131,16 +129,7 @@ const pump = (stream, parts, onWrite) => {
 
 test('detects the content-type when the signature spans chunks', async t => {
   const res = createRes()
-  chunked(IMAGE, 1).pipe(setContentType(res))
-  const output = await collect(res)
-
-  t.is(res.getHeader('content-type'), 'image/jpeg')
-  t.deepEqual(output, IMAGE)
-})
-
-test('detects the content-type from small chunks', async t => {
-  const res = createRes()
-  chunked(IMAGE, 3).pipe(setContentType(res))
+  byteByByte(IMAGE).pipe(setContentType(res))
   const output = await collect(res)
 
   t.is(res.getHeader('content-type'), 'image/jpeg')
@@ -150,36 +139,16 @@ test('detects the content-type from small chunks', async t => {
 test('leaves content-type unset for an unrecognized chunked payload', async t => {
   const payload = Buffer.alloc(32, 1)
   const res = createRes()
-  chunked(payload, 1).pipe(setContentType(res))
+  byteByByte(payload).pipe(setContentType(res))
   const output = await collect(res)
 
   t.is(res.getHeader('content-type'), undefined)
   t.deepEqual(output, payload)
 })
 
-test('reads the content-type from a response without hasHeader', async t => {
-  const headers = { 'content-type': 'image/png' }
-  const res = Object.assign(new PassThrough(), {
-    headersSent: false,
-    setHeader: (key, value) => {
-      headers[key.toLowerCase()] = value
-    },
-    getHeader: key => headers[key.toLowerCase()]
-  })
-  Readable.from([IMAGE]).pipe(setContentType(res))
-  await collect(res)
-
-  t.is(headers['content-type'], 'image/png')
-})
-
-test('sets the content-type on a response without header helpers', async t => {
+test('sets the content-type on a response without getHeader', async t => {
   const headers = {}
-  const res = Object.assign(new PassThrough(), {
-    headersSent: false,
-    setHeader: (key, value) => {
-      headers[key.toLowerCase()] = value
-    }
-  })
+  const res = createRes(headers, { getHeader: undefined })
   Readable.from([IMAGE]).pipe(setContentType(res))
   await collect(res)
 
@@ -210,20 +179,21 @@ test('releases an unrecognized payload once the sample is full', async t => {
 })
 
 test('forwards the payload when the response refuses the header', async t => {
-  const res = Object.assign(new PassThrough(), {
-    headersSent: false,
-    setHeader: () => {
-      throw new Error('header refused')
+  const res = createRes(
+    {},
+    {
+      setHeader: () => {
+        throw new Error('header refused')
+      }
     }
-  })
+  )
   Readable.from([IMAGE]).pipe(setContentType(res))
 
   t.deepEqual(await collect(res), IMAGE)
 })
 
-// A ZIP whose first entry names the real format. `file-type` reports
-// `application/zip` until the sample reaches that entry, which is how every
-// Office and OpenDocument container behaves.
+// A ZIP whose first entry names the real format, which is how every Office and
+// OpenDocument container behaves.
 const zipEntry = (name, data) => {
   const filename = Buffer.from(name)
   const header = Buffer.alloc(30)
@@ -242,7 +212,7 @@ const ODT = zipEntry(
 
 test('detects the container type rather than the container', async t => {
   const res = createRes()
-  chunked(ODT, 1).pipe(setContentType(res))
+  byteByByte(ODT).pipe(setContentType(res))
   const output = await collect(res)
 
   t.is(res.getHeader('content-type'), 'application/vnd.oasis.opendocument.text')

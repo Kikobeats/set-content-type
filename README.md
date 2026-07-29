@@ -45,19 +45,17 @@ The outgoing response whose `content-type` should be set when missing.
 It returns a [`Transform`](https://nodejs.org/api/stream.html#class-streamtransform)
 stream **already piped to `res`** — pipe your upstream into it and you are done.
 
-Incoming bytes are sampled until 4100 bytes have arrived or the stream ends,
-whichever comes first. Detection then runs once over the sample, so a signature
-split across chunk boundaries is still recognized, and the header is always set
-before the first write to `res`. 4100 is the detection window
-[`file-type` considers reasonable](https://github.com/sindresorhus/file-type#filetypestreamreadablestream-options),
-so the whole payload is never buffered.
+Incoming bytes are sampled until
+[`file-type`'s detection window](https://github.com/sindresorhus/file-type#filetypestreamreadablestream-options)
+is full or the stream ends, whichever comes first. Detection then runs once over
+the sample, so a signature split across chunk boundaries is still recognized, and
+the header is always set before the first write to `res`. The whole payload is
+never buffered.
 
-Sampling waits for the full window instead of stopping at the first match
-because a container reports a generic type until the sample reaches the marker
-naming the real one: a `.docx` reads as `application/zip` and a `.heic` as
-`video/mp4` until then. Detecting from the first chunk alone sets the generic
-type whenever the upstream delivers small chunks, which is exactly what a slow
-origin, a TLS record boundary or a proxy produces.
+Waiting for the full window instead of stopping at the first match is what makes
+containers report their real type: a `.docx` reads as `application/zip` and a
+`.heic` as `video/mp4` until the sample reaches the marker naming the real
+format. The cost is that the first bytes reach `res` only once the window fills.
 
 The header is **not** set when:
 
