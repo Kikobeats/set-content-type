@@ -56,6 +56,15 @@ Buffering is bounded by that sample and nothing beyond it is held, so a body
 smaller than the sample reaches `res` when the upstream ends. Nothing is sampled
 at all when `res` already has a `content-type`.
 
+Magic bytes name every binary format and no text one, so a payload the sample
+leaves unnamed is read once more as markup, against the same patterns
+[WHATWG](https://mimesniff.spec.whatwg.org/#identifying-a-resource-with-an-unknown-mime-type)
+sniffs an unknown type with: a leading `<!doctype html>`, `<html`, `<div`, an
+HTML comment and the rest of the list, within the first 512 bytes and after any
+byte order mark or whitespace. Those get `text/html`; prose stays untyped, which
+is what a browser assumes anyway. No charset is claimed, so the document's own
+`<meta>` still decides its encoding.
+
 If detection itself fails, the error surfaces on the returned stream and `res`
 is destroyed rather than sent a body the sample has already eaten into.
 

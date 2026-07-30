@@ -232,3 +232,48 @@ test('detects the container type rather than the container', async t => {
   t.is(res.getHeader('content-type'), 'application/vnd.oasis.opendocument.text')
   t.deepEqual(output, ODT)
 })
+
+const html = markup => Readable.from([Buffer.from(markup)])
+
+for (const [name, markup, expected] of [
+  ['a doctype', '<!DOCTYPE html><title>woot</title>', 'text/html'],
+  ['a bare tag', '<html><body>woot</body></html>', 'text/html'],
+  ['a fragment', '<div class="woot">woot</div>', 'text/html'],
+  ['a comment', '<!-- woot -->\n<p>woot</p>', 'text/html'],
+  ['leading whitespace', '\n\n  <!doctype html>', 'text/html'],
+  ['a byte order mark', '﻿<!doctype html>', 'text/html'],
+  // xml is the one markup file-type already names, so it never reaches the fallback
+  ['an xml declaration', '<?xml version="1.0"?><rss />', 'application/xml'],
+  ['prose', 'woot, and then some more woot', undefined],
+  ['a tag that only looks like one', '<paragraph>woot</paragraph>', undefined],
+  ['markup past the header', `${' '.repeat(512)}<!doctype html>`, undefined]
+]) {
+  test(`sniffs ${name}`, async t => {
+    const res = createRes()
+    html(markup).pipe(setContentType(res))
+    const output = await collect(res)
+
+    t.is(res.getHeader('content-type'), expected)
+    t.deepEqual(output, Buffer.from(markup))
+  })
+}
+
+test('sniffs markup that spans chunks', async t => {
+  const markup = Buffer.from('<!doctype html><title>woot</title>')
+  const res = createRes()
+  byteByByte(markup).pipe(setContentType(res))
+  const output = await collect(res)
+
+  t.is(res.getHeader('content-type'), 'text/html')
+  t.deepEqual(output, markup)
+})
+
+test('a magic-byte match is never second-guessed as markup', async t => {
+  const res = createRes()
+  html(Buffer.concat([JPEG, Buffer.from('<!doctype html>')])).pipe(
+    setContentType(res)
+  )
+  await collect(res)
+
+  t.is(res.getHeader('content-type'), 'image/jpeg')
+})
