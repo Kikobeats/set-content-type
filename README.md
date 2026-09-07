@@ -1,8 +1,8 @@
 # @kikobeats/set-content-type
 
-![Last version](https://img.shields.io/github/tag/kikobeats/set-content-type.svg?style=flat-square)
-[![Coverage Status](https://img.shields.io/coveralls/Kikobeats/set-content-type.svg?style=flat-square)](https://coveralls.io/github/Kikobeats/set-content-type)
-[![NPM Status](https://img.shields.io/npm/dm/@kikobeats/set-content-type.svg?style=flat-square)](https://www.npmjs.org/package/@kikobeats/set-content-type)
+[![Last version](https://img.shields.io/github/v/tag/Kikobeats/set-content-type?style=flat-square)](https://github.com/Kikobeats/set-content-type/releases)
+[![Coverage Status](https://img.shields.io/coverallsCoverage/github/Kikobeats/set-content-type?style=flat-square)](https://coveralls.io/github/Kikobeats/set-content-type)
+[![NPM Status](https://img.shields.io/npm/dm/@kikobeats/set-content-type?style=flat-square)](https://www.npmjs.com/package/@kikobeats/set-content-type)
 
 > Set the response `content-type` based on the payload bytes.
 
