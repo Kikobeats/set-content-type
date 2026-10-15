@@ -33,7 +33,7 @@
     "stream"
   ],
   "dependencies": {
-    "file-type": "~22.0.1"
+    "file-type": "~22.1.1"
   },
   "devDependencies": {
     "@commitlint/cli": "latest",
